@@ -1,0 +1,176 @@
+/* ===== Horizon Custom Styles ===== */
+
+/* --- CSS Variables & Dark Mode (Kanagawa) --- */
+:root {
+  --hz-bg: #f2ecbc;          /* lotusWhite5 — warm parchment */
+  --hz-surface: #e7dba0;     /* lotusWhite3 */
+  --hz-border: #d7c99a;      /* lotusWhite2 */
+  --hz-text: #545464;        /* lotusInk1 */
+  --hz-text-muted: #8a8980;  /* lotusAsh */
+  --hz-link: #6693bf;        /* lotusBlue — wave blue */
+  --hz-code-bg: #e5ddb0;     /* lotusWhite4 */
+  --hz-accent: #e98a00;      /* lotusOrange — warm accent */
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --hz-bg: #1f1f28;        /* sumiInk3 — deep ink */
+    --hz-surface: #2a2a37;   /* sumiInk4 */
+    --hz-border: #363646;    /* sumiInk5 */
+    --hz-text: #dcd7ba;      /* fujiWhite — warm white */
+    --hz-text-muted: #727169; /* fujiGray */
+    --hz-link: #7fb4ca;      /* springBlue — wave crest */
+    --hz-code-bg: #252535;   /* sumiInk3.5 */
+    --hz-accent: #ffa066;    /* surimiOrange */
+  }
+}
+
+/* Apply variables to base elements */
+body {
+  background-color: var(--hz-bg) !important;
+  color: var(--hz-text) !important;
+}
+
+a {
+  color: var(--hz-link) !important;
+}
+
+code {
+  background-color: var(--hz-code-bg) !important;
+  color: var(--hz-text) !important;
+}
+
+pre {
+  background-color: var(--hz-code-bg) !important;
+  color: var(--hz-text) !important;
+  border: 1px solid var(--hz-border) !important;
+}
+
+hr {
+  border-color: var(--hz-border) !important;
+}
+
+h1, h2, h3, h4, h5, h6 {
+  color: var(--hz-text) !important;
+}
+
+/* Override Cayman header gradient — Kanagawa wave indigo to deep teal */
+.page-header {
+  background: linear-gradient(120deg, #1a1a2e, #16425b) !important;
+}
+
+/* --- Score Badge --- */
+.score-badge {
+  display: inline-block;
+  padding: 0.1em 0.5em;
+  border-radius: 3px;
+  font-family: monospace;
+  font-size: 0.75em;
+  font-weight: 700;
+  color: #fff;
+  margin-left: 0.4em;
+  vertical-align: middle;
+}
+
+.score-badge[data-tier="high"] { background: #e82424; } /* peachRed */
+.score-badge[data-tier="good"] { background: #ffa066; } /* surimiOrange */
+.score-badge[data-tier="mid"]  { background: #e6c384; } /* carpYellow */
+.score-badge[data-tier="low"]  { background: #727169; } /* fujiGray */
+
+/* --- Tag Pills --- */
+.tag-line code {
+  border-radius: 3px;
+  padding: 0.1em 0.5em;
+  font-size: 0.8em;
+  background: var(--hz-accent) !important;
+  color: #fff !important;
+}
+
+@media (prefers-color-scheme: dark) {
+  .tag-line code {
+    background: #363646 !important;   /* sumiInk5 */
+    color: #e6c384 !important;        /* carpYellow */
+  }
+}
+
+/* --- Source Line --- */
+.source-line {
+  font-size: 0.85em;
+  color: var(--hz-text-muted);
+  border-left: 2px solid var(--hz-accent);
+  padding-left: 0.6em;
+}
+
+/* --- Collapsible References --- */
+.main-content details {
+  border: 1px solid var(--hz-border);
+  border-radius: 4px;
+  margin: 0.8em 0;
+}
+
+.main-content details summary {
+  cursor: pointer;
+  padding: 0.4em 0.8em;
+  font-weight: 600;
+  color: var(--hz-text-muted);
+}
+
+.main-content details > ul {
+  padding: 0.4em 0.8em 0.4em 2em;
+  margin: 0;
+}
+
+/* --- TOC Ordered List --- */
+.main-content > ol {
+  border: 1px solid var(--hz-border);
+  border-radius: 4px;
+  padding: 0.8em 0.8em 0.8em 2em;
+  background: var(--hz-surface);
+}
+
+.main-content > ol > li {
+  padding: 0.3em 0;
+}
+
+/* --- Summary Blockquote --- */
+.main-content > blockquote:first-of-type {
+  border-left-color: var(--hz-accent);
+  color: var(--hz-text-muted);
+  font-style: normal;
+}
+
+/* --- Language Toggle --- */
+.lang-toggle {
+  display: flex;
+  justify-content: center;
+  gap: 0;
+  margin: 1rem 0;
+}
+
+.lang-toggle button {
+  padding: 0.4em 1.5em;
+  border: 1px solid var(--hz-border);
+  background: transparent;
+  color: var(--hz-text);
+  font-size: 0.9em;
+  cursor: pointer;
+}
+
+.lang-toggle button:first-child {
+  border-radius: 3px 0 0 3px;
+}
+
+.lang-toggle button:last-child {
+  border-radius: 0 3px 3px 0;
+  border-left: none;
+}
+
+.lang-toggle button.active {
+  background: var(--hz-accent);
+  color: #fff;
+  border-color: var(--hz-accent);
+}
+
+.lang-section.hidden {
+  display: none;
+}
