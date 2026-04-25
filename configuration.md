@@ -234,8 +234,10 @@ Webhook notification is optional and disabled unless `webhook.enabled` is `true`
   "webhook": {
     "enabled": true,
     "url_env": "HORIZON_WEBHOOK_URL",
+    "delivery": "summary",
+    "languages": null,
     "request_body": {
-      "text": "Horizon #{date}: #{result}\n#{summary?limit=3000&split=---}"
+      "text": "#{message_title}\n#{summary}"
     },
     "headers": ""
   }
@@ -244,6 +246,8 @@ Webhook notification is optional and disabled unless `webhook.enabled` is `true`
 
 - `enabled`: Turns webhook delivery on or off. The default is `false`.
 - `url_env`: Environment variable that contains the webhook URL. For example, set `HORIZON_WEBHOOK_URL=https://...` in `.env`.
+- `delivery`: Controls how messages are sent. Use `summary` for one full message, or `summary_and_items` for one overview message followed by one message per selected item.
+- `languages`: Optional webhook-only language filter. Use `["zh"]` or `["en"]` to send only selected languages; use `null` or omit it to send all configured `ai.languages`.
 - `request_body`: Optional request body. If empty, Horizon sends a `GET` request. If provided, Horizon sends a `POST` request.
 - `headers`: Optional custom headers, one `Key: Value` pair per line.
 
@@ -261,7 +265,19 @@ Available variables:
 | `#{all_items}` | Total number of fetched items |
 | `#{result}` | `success` or `failed` |
 | `#{timestamp}` | Unix timestamp |
-| `#{summary}` | Full summary Markdown |
+| `#{message_title}` | Message title, such as the daily title, overview title, or item title |
+| `#{message_kind}` | Message kind: `summary`, `overview`, `item`, `failure`, or `manual` |
+| `#{summary}` | Message Markdown. In `summary_and_items` mode this is the overview or one item body, depending on the message |
+
+When `delivery` is `summary_and_items`, item messages also include:
+
+| Variable | Description |
+|----------|-------------|
+| `#{item_index}` | 1-based item number |
+| `#{item_count}` | Total number of item messages |
+| `#{item_title}` | Current item title |
+| `#{item_url}` | Current item URL |
+| `#{item_score}` | Current item AI score |
 
 For webhook delivery, Horizon flattens HTML disclosure blocks such as `<details><summary>...</summary>` in `#{summary}` into plain Markdown link lists. This makes the generated summary easier to render in chat products. Saved Markdown files, GitHub Pages, and email content are unchanged.
 
@@ -302,7 +318,7 @@ Use Card JSON 2.0 for Markdown rendering. The card must include `"schema": "2.0"
     "header": {
       "title": {
         "tag": "plain_text",
-        "content": "Horizon #{date} Daily"
+        "content": "#{message_title}"
       },
       "template": "blue"
     },
