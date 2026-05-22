@@ -151,15 +151,60 @@ class EmailManager:
             logger.error(f"Error checking subscriptions: {e}")
 
     def send_daily_summary(self, summary_md: str, subject: str, subscribers: List[str]):
-        """Sends the daily summary to all subscribers."""
-        if not self.config.enabled or not subscribers:
+        """Sends the daily summary. Falls back to config.email_address when no subscribers."""
+        if not self.config.enabled:
             return
 
-        safe_summary = html.escape(summary_md)
+        # Fall back to the configured email address when subscriber list is empty
+        recipients = list(subscribers) if subscribers else [self.config.email_address]
+
+        if not self.pwd:
+            logger.error(
+                "EMAIL_PASSWORD environment variable is not set. "
+                "Please add it to your .env file.\n"
+                "For QQ email: use the SMTP authorization code from "
+                "mail.qq.com → Settings → Account → POP3/SMTP Service."
+            )
+            if self.console:
+                self.console.print(
+                    "[red]❌ EMAIL_PASSWORD not set — skipping email send.[/red]\n"
+                    "[dim]For QQ email, generate an auth code at: "
+                    "mail.qq.com → 设置 → 账户 → POP3/SMTP服务 → 生成授权码[/dim]"
+                )
+            return
+
+        # Replace TOC anchor links with real article URLs (anchor links don't work in email)
+        import re
+        # Build mapping: #item-N -> real URL from detail section
+        id_url_map = {}
+        for m in re.finditer(
+            r'<a id="item-(\d+)"></a>\n## \[[^\]]+\]\((https?://[^)]+)\)',
+            summary_md,
+        ):
+            item_num = int(m.group(1))
+            id_url_map[f"#item-{item_num}"] = m.group(2)
+
+        if id_url_map:
+            def _replace_anchor(match):
+                title = match.group(1)
+                anchor = match.group(2)
+                real_url = id_url_map.get(anchor)
+                if real_url:
+                    return f"[{title}]({real_url})"
+                return title
+
+            email_md = re.sub(
+                r'\[([^\]]+)\]\((#[^)]+)\)',
+                _replace_anchor,
+                summary_md,
+            )
+        else:
+            email_md = summary_md
+
         html_content = (
-            markdown.markdown(safe_summary)
+            markdown.markdown(email_md)
             if markdown
-            else f"<pre>{safe_summary}</pre>"
+            else f"<pre>{html.escape(email_md)}</pre>"
         )
 
         html_body = f"""
@@ -180,7 +225,6 @@ class EmailManager:
             {html_content}
             <div class="footer">
                 <p>Sent by {self.config.sender_name}</p>
-                <p>To unsubscribe, please reply with "{self.config.unsubscribe_keyword}"</p>
             </div>
         </body>
         </html>
@@ -194,13 +238,13 @@ class EmailManager:
                     self.config.smtp_username or self.config.email_address, self.pwd
                 )
 
-                for subscriber in subscribers:
+                for recipient in recipients:
                     msg = MIMEMultipart("alternative")
                     msg["Subject"] = subject
                     msg["From"] = (
                         f"{self.config.sender_name} <{self.config.email_address}>"
                     )
-                    msg["To"] = subscriber
+                    msg["To"] = recipient
 
                     text_part = MIMEText(summary_md, "plain")
                     html_part = MIMEText(html_body, "html")
@@ -210,12 +254,25 @@ class EmailManager:
 
                     try:
                         server.send_message(msg)
-                        logger.info(f"Sent summary to {subscriber}")
+                        logger.info(f"Sent summary to {recipient}")
+                        if self.console:
+                            self.console.print(f"📧 Sent summary to {recipient}")
                     except Exception as e:
-                        logger.error(f"Failed to send to {subscriber}: {e}")
+                        logger.error(f"Failed to send to {recipient}: {e}")
+                        if self.console:
+                            self.console.print(f"[red]Failed to send to {recipient}: {e}[/red]")
 
+        except smtplib.SMTPAuthenticationError as e:
+            logger.error(f"SMTP Authentication failed: {e}")
+            if self.console:
+                self.console.print(
+                    f"[red]❌ SMTP 认证失败: {e}[/red]\n"
+                    "[dim]QQ 邮箱用户：请确认 EMAIL_PASSWORD 是授权码而非 QQ 密码[/dim]"
+                )
         except Exception as e:
             logger.error(f"SMTP Error: {e}")
+            if self.console:
+                self.console.print(f"[red]❌ SMTP Error: {e}[/red]")
 
     def _send_reply(self, to_email: str, subject: str, body: str):
         """Helper to send a simple reply."""

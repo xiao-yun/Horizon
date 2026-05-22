@@ -28,6 +28,7 @@ class ContentItem(BaseModel):
     url: HttpUrl
     content: Optional[str] = None
     author: Optional[str] = None
+    category: Optional[str] = None
     published_at: datetime
     fetched_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     metadata: Dict[str, Any] = Field(default_factory=dict)
@@ -79,6 +80,7 @@ class GitHubSourceConfig(BaseModel):
     owner: Optional[str] = None
     repo: Optional[str] = None
     enabled: bool = True
+    category: Optional[str] = None
 
 
 class HackerNewsConfig(BaseModel):
@@ -87,6 +89,7 @@ class HackerNewsConfig(BaseModel):
     enabled: bool = True
     fetch_top_stories: int = 30
     min_score: int = 100
+    category: Optional[str] = None
 
 
 class RSSSourceConfig(BaseModel):
@@ -314,6 +317,8 @@ class FilteringConfig(BaseModel):
 
     ai_score_threshold: float = 7.0
     time_window_hours: int = 24
+    category_top_n: Dict[str, int] = Field(default_factory=dict)
+    category_default_top_n: int = 5
 
 
 class Config(BaseModel):

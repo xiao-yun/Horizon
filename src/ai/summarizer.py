@@ -1,6 +1,7 @@
 """Daily summary generation — pure programmatic rendering."""
 
 import re
+from collections import defaultdict
 from typing import List, Dict
 
 from ..models import ContentItem
@@ -56,6 +57,19 @@ LABELS = {
     },
 }
 
+CATEGORY_NAMES = {
+    "en": {
+        "ai-tools": "AI & Tools",
+        "data-warehouse": "Data Warehouse",
+        "general": "General",
+    },
+    "zh": {
+        "ai-tools": "AI 与工具",
+        "data-warehouse": "数据仓库",
+        "general": "综合",
+    },
+}
+
 
 class DailySummarizer:
     """Generates daily Markdown summaries from pre-analyzed content items."""
@@ -72,7 +86,7 @@ class DailySummarizer:
     ) -> str:
         """Generate daily summary in Markdown format.
 
-        Items are rendered in score-descending order (already sorted by orchestrator).
+        Items are grouped by category, with each category getting a section header.
 
         Args:
             items: High-scoring content items (already enriched)
@@ -84,6 +98,7 @@ class DailySummarizer:
             str: Markdown formatted summary
         """
         labels = LABELS.get(language, LABELS["en"])
+        cat_names = CATEGORY_NAMES.get(language, CATEGORY_NAMES["en"])
 
         if not items:
             return self._generate_empty_summary(date, total_fetched, labels)
@@ -94,18 +109,33 @@ class DailySummarizer:
             "---\n\n"
         )
 
-        # TOC
-        toc_entries = []
-        for i, item in enumerate(items):
-            _t = item.metadata.get(f"title_{language}") or item.title
-            t = str(_t).replace("[", "(").replace("]", ")")
-            if language == "zh":
-                t = _pangu(t)
-            score = item.ai_score or "?"
-            toc_entries.append(f"{i + 1}. [{t}](#item-{i + 1}) \u2b50\ufe0f {score}/10")
-        toc = "\n".join(toc_entries) + "\n\n---\n\n"
+        # Group items by category (preserving score order within each group)
+        groups: Dict[str, List[ContentItem]] = defaultdict(list)
+        for item in items:
+            cat = item.category or "general"
+            groups[cat].append(item)
 
-        parts = [self._format_item(item, labels, language, i + 1) for i, item in enumerate(items)]
+        # TOC with category sections
+        toc_entries = []
+        parts = []
+        global_idx = 0
+        for cat in sorted(groups):
+            cat_items = groups[cat]
+            cat_display = cat_names.get(cat, cat)
+            toc_entries.append(f"## {cat_display}")
+            parts.append(f"## {cat_display}\n\n")
+            for item in cat_items:
+                global_idx += 1
+                _t = item.metadata.get(f"title_{language}") or item.title
+                t = str(_t).replace("[", "(").replace("]", ")")
+                if language == "zh":
+                    t = _pangu(t)
+                score = item.ai_score or "?"
+                toc_entries.append(f"{global_idx}. [{t}](#item-{global_idx}) \u2b50\ufe0f {score}/10")
+                parts.append(self._format_item(item, labels, language, global_idx))
+            parts.append("\n")
+
+        toc = "\n".join(toc_entries) + "\n\n---\n\n"
 
         return header + toc + "".join(parts)
 

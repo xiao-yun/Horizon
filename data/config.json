@@ -2,48 +2,75 @@
   "version": "1.0",
   "ai": {
     "provider": "deepseek",
-    "model": "deepseek-v4-flash",
-    "base_url": "https://api.deepseek.com",
-    "api_key_env": "OPENAI_API_KEY",
+    "model": "deepseek-v4-pro",
+    "api_key_env": "DEEPSEEK_API_KEY",
     "temperature": 0.3,
-    "max_tokens": 8192,
-    "languages": [
-      "zh",
-      "en"
-    ],
-    "analysis_concurrency": 5,
-    "enrichment_concurrency": 5
+    "max_tokens": 4096,
+    "throttle_sec": 0,
+    "analysis_concurrency": 1,
+    "enrichment_concurrency": 5,
+    "languages": ["zh"]
+  },
+  "email": {
+    "enabled": true,
+    "smtp_server": "smtp.qq.com",
+    "smtp_port": 465,
+    "imap_server": "imap.qq.com",
+    "imap_port": 993,
+    "email_address": "${EMAIL_ADDRESS}",
+    "sender_name": "Horizon Daily",
+    "subscribe_keyword": "SUBSCRIBE",
+    "unsubscribe_keyword": "UNSUBSCRIBE"
   },
   "sources": {
     "github": [
       {
         "type": "user_events",
-        "username": "karpathy",
-        "enabled": true
+        "username": "torvalds",
+        "enabled": true,
+        "category": "general"
       },
       {
         "type": "repo_releases",
-        "owner": "vllm-project",
-        "repo": "vllm",
-        "enabled": true
+        "owner": "astral-sh",
+        "repo": "uv",
+        "enabled": true,
+        "category": "general"
       },
       {
         "type": "repo_releases",
-        "owner": "sgl-project",
-        "repo": "sglang",
-        "enabled": true
+        "owner": "apache",
+        "repo": "iceberg",
+        "enabled": true,
+        "category": "data-warehouse"
       },
       {
         "type": "repo_releases",
-        "owner": "triton-lang",
-        "repo": "triton",
-        "enabled": true
+        "owner": "duckdb",
+        "repo": "duckdb",
+        "enabled": true,
+        "category": "data-warehouse"
+      },
+      {
+        "type": "repo_releases",
+        "owner": "delta-io",
+        "repo": "delta",
+        "enabled": true,
+        "category": "data-warehouse"
+      },
+      {
+        "type": "repo_releases",
+        "owner": "apache",
+        "repo": "flink",
+        "enabled": true,
+        "category": "data-warehouse"
       }
     ],
     "hackernews": {
       "enabled": true,
-      "fetch_top_stories": 30,
-      "min_score": 150
+      "fetch_top_stories": 20,
+      "min_score": 100,
+      "category": "ai-tools"
     },
     "rss": [
       {
@@ -53,16 +80,46 @@
         "category": "ai-tools"
       },
       {
-        "name": "GitHub Trending - Daily",
-        "url": "https://mshibanami.github.io/GitHubTrendingRSS/daily/all.xml",
-        "enabled": true,
-        "category": "github-trending"
+        "name": "LWN.net (subscriber full-text)",
+        "url": "https://lwn.net/headlines/full_text?key=${LWN_KEY}",
+        "enabled": false,
+        "category": "linux"
       },
       {
-        "name": "LWN.net",
-        "url": "https://lwn.net/headlines/full_text?key=${LWN_KEY}",
+        "name": "DuckDB Blog",
+        "url": "https://duckdb.org/feed.xml",
         "enabled": true,
-        "category": "linux-kernel"
+        "category": "data-warehouse"
+      },
+      {
+        "name": "Confluent Blog (Kafka/Flink)",
+        "url": "https://www.confluent.io/rss.xml",
+        "enabled": true,
+        "category": "data-warehouse"
+      },
+      {
+        "name": "Databricks Blog",
+        "url": "https://www.databricks.com/feed",
+        "enabled": true,
+        "category": "data-warehouse"
+      },
+      {
+        "name": "dbt Blog",
+        "url": "https://docs.getdbt.com/blog/rss.xml",
+        "enabled": true,
+        "category": "data-warehouse"
+      },
+      {
+        "name": "ClickHouse Blog",
+        "url": "https://clickhouse.com/rss.xml",
+        "enabled": true,
+        "category": "data-warehouse"
+      },
+      {
+        "name": "Apache Iceberg Blog",
+        "url": "https://iceberg.apache.org/rss.xml",
+        "enabled": true,
+        "category": "data-warehouse"
       }
     ],
     "reddit": {
@@ -74,46 +131,70 @@
           "sort": "hot",
           "time_filter": "day",
           "fetch_limit": 15,
-          "min_score": 60
-        },
-        {
-          "subreddit": "LocalLLaMA",
-          "enabled": true,
-          "sort": "hot",
-          "time_filter": "day",
-          "fetch_limit": 15,
-          "min_score": 60
+          "min_score": 50
         }
       ],
-      "users": [],
-      "fetch_comments": 10
-    },
-    "telegram": {
-      "enabled": true,
-      "channels": [
+      "users": [
         {
-          "channel": "zaihuapd",
+          "username": "iamthatis",
           "enabled": true,
-          "fetch_limit": 20
+          "sort": "new",
+          "fetch_limit": 10
+        }
+      ],
+      "fetch_comments": 5
+    },
+    "twitter": {
+      "enabled": false,
+      "users": ["karpathy", "ylecun"],
+      "fetch_limit": 10,
+      "fetch_reply_text": false,
+      "max_replies_per_tweet": 3,
+      "max_tweets_to_expand": 10,
+      "reply_min_likes": 5
+    },
+    "openbb": {
+      "enabled": false,
+      "fetch_filings": false,
+      "filings_provider": "sec",
+      "watchlists": [
+        {
+          "name": "megacaps",
+          "enabled": true,
+          "provider": "yfinance",
+          "fetch_limit": 20,
+          "category": "equities",
+          "symbols": ["AAPL", "MSFT", "NVDA", "GOOGL", "AMZN", "META", "TSLA"]
         }
       ]
+    },
+    "ossinsight": {
+      "enabled": false,
+      "period": "past_24_hours",
+      "languages": ["All", "Python", "TypeScript"],
+      "keywords": [],
+      "min_stars": 10,
+      "max_items": 30
     }
   },
   "filtering": {
-    "ai_score_threshold": 8.0,
-    "time_window_hours": 24
+    "ai_score_threshold": 6.0,
+    "time_window_hours": 24,
+    "category_top_n": {
+      "ai-tools": 10,
+      "data-warehouse": 10
+    },
+    "category_default_top_n": 5
   },
   "webhook": {
-    "enabled": true,
+    "enabled": false,
     "url_env": "HORIZON_WEBHOOK_URL",
-    "delivery": "summary_and_items",
-    "overview_position": "last",
-    "platform": "feishu",
-    "layout": "collapsible",
+    "delivery": "summary",
+    "overview_position": "first",
+    "platform": "generic",
+    "layout": "markdown",
     "fallback_layout": "markdown",
-    "languages": [
-      "zh"
-    ],
+    "languages": null,
     "request_body": {
       "msg_type": "interactive",
       "card": {
@@ -130,6 +211,13 @@
         },
         "body": {
           "elements": [
+            {
+              "tag": "markdown",
+              "content": "Horizon生成结果: #{result}\nHorizon日报重要资讯数量: #{important_items}/#{all_items}"
+            },
+            {
+              "tag": "hr"
+            },
             {
               "tag": "markdown",
               "content": "#{summary}"

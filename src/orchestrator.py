@@ -55,6 +55,9 @@ class HorizonOrchestrator:
         """
         self.console.print("[bold cyan]🌅 Horizon - Starting aggregation...[/bold cyan]\n")
 
+        # Create shared AI client for all stages
+        ai_client = create_ai_client(self.config.ai)
+
         # Check email subscriptions if configured
         if (
             self.email_manager
@@ -87,7 +90,7 @@ class HorizonOrchestrator:
                 )
 
             # 4. Analyze with AI
-            analyzed_items = await self._analyze_content(merged_items)
+            analyzed_items = await self._analyze_content(merged_items, ai_client)
             self.console.print(f"🤖 Analyzed {len(analyzed_items)} items with AI\n")
 
             # 5. Filter by score threshold
@@ -102,8 +105,16 @@ class HorizonOrchestrator:
                 f"⭐️ {len(important_items)} items scored ≥ {threshold}\n"
             )
 
+            # 5.1 Per-category top-N selection
+            if self.config.filtering.category_top_n:
+                important_items = self._select_per_category(
+                    important_items,
+                    self.config.filtering.category_top_n,
+                    self.config.filtering.category_default_top_n,
+                )
+
             # 5.5 Semantic deduplication: drop items covering the same topic
-            deduped_items = await self.merge_topic_duplicates(important_items)
+            deduped_items = await self.merge_topic_duplicates(important_items, ai_client)
             if len(deduped_items) < len(important_items):
                 self.console.print(
                     f"🧹 Removed {len(important_items) - len(deduped_items)} topic duplicates "
@@ -112,7 +123,7 @@ class HorizonOrchestrator:
             important_items = deduped_items
 
             # 5.6 Optional second-stage Twitter reply expansion + targeted re-analysis
-            await self._expand_twitter_discussion(important_items)
+            await self._expand_twitter_discussion(important_items, ai_client)
 
             # Show per-sub-source selection breakdown
             selected_counts: Dict[str, int] = defaultdict(int)
@@ -124,7 +135,7 @@ class HorizonOrchestrator:
             self.console.print("")
 
             # 6. Search related stories + enrich with background knowledge (2nd AI pass)
-            await self._enrich_important_items(important_items)
+            await self._enrich_important_items(important_items, ai_client)
 
             # 7. Generate and save daily summaries for each configured language
             today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
@@ -189,6 +200,7 @@ class HorizonOrchestrator:
                         summarizer=summarizer,
                     )
 
+            self.storage.save_last_run(datetime.now(timezone.utc))
             self.console.print("[bold green]✅ Horizon completed successfully![/bold green]")
             usage = get_usage_snapshot()
             if usage.total_tokens > 0:
@@ -206,6 +218,7 @@ class HorizonOrchestrator:
                     )
 
         except Exception as e:
+            self.storage.save_last_run(datetime.now(timezone.utc))
             self.console.print(f"[bold red]❌ Error: {e}[/bold red]")
 
             # Send webhook failure notification if configured
@@ -219,11 +232,18 @@ class HorizonOrchestrator:
 
     def _determine_time_window(self, force_hours: int = None) -> datetime:
         if force_hours:
-            since = datetime.now(timezone.utc) - timedelta(hours=force_hours)
-        else:
-            hours = self.config.filtering.time_window_hours
-            since = datetime.now(timezone.utc) - timedelta(hours=hours)
-        return since
+            return datetime.now(timezone.utc) - timedelta(hours=force_hours)
+
+        last_run = self.storage.load_last_run()
+        if last_run:
+            self.console.print(
+                f"📅 Using last run time as window start: "
+                f"{last_run.strftime('%Y-%m-%d %H:%M:%S')} UTC"
+            )
+            return last_run
+
+        hours = self.config.filtering.time_window_hours
+        return datetime.now(timezone.utc) - timedelta(hours=hours)
 
     async def fetch_all_sources(self, since: datetime) -> List[ContentItem]:
         """Fetch content from all configured sources.
@@ -317,6 +337,41 @@ class HorizonOrchestrator:
 
         return items
 
+    def _select_per_category(
+        self,
+        items: List[ContentItem],
+        category_top_n: Dict[str, int],
+        default_n: int,
+    ) -> List[ContentItem]:
+        """Select top-N items per category, then merge back sorted by score.
+
+        Args:
+            items: Items that passed the score threshold (already sorted by score desc)
+            category_top_n: Per-category top-N limits, e.g. {"ai-tools": 10, "data-warehouse": 10}
+            default_n: Default limit for categories not listed in category_top_n
+
+        Returns:
+            List[ContentItem]: Selected items, sorted by score descending
+        """
+        groups: Dict[str, List[ContentItem]] = defaultdict(list)
+        for item in items:
+            cat = item.category or "general"
+            groups[cat].append(item)
+
+        selected = []
+        for cat in sorted(groups):
+            cat_items = groups[cat]
+            cat_items.sort(key=lambda x: x.ai_score or 0, reverse=True)
+            limit = category_top_n.get(cat, default_n)
+            picked = cat_items[:limit]
+            self.console.print(
+                f"   📂 {cat}: {len(picked)}/{len(cat_items)} selected (top {limit})"
+            )
+            selected.extend(picked)
+
+        selected.sort(key=lambda x: x.ai_score or 0, reverse=True)
+        return selected
+
     @staticmethod
     def _sub_source_label(item: ContentItem) -> str:
         """Return a human-readable sub-source label for an item."""
@@ -391,7 +446,7 @@ class HorizonOrchestrator:
 
         return merged
 
-    async def merge_topic_duplicates(self, items: List[ContentItem]) -> List[ContentItem]:
+    async def merge_topic_duplicates(self, items: List[ContentItem], ai_client=None) -> List[ContentItem]:
         """Merge items covering the same topic using AI semantic deduplication.
 
         This is a stable stage helper for integrations such as MCP.
@@ -418,7 +473,8 @@ class HorizonOrchestrator:
         items_text = "\n\n".join(lines)
 
         try:
-            ai_client = create_ai_client(self.config.ai)
+            if ai_client is None:
+                ai_client = create_ai_client(self.config.ai)
             response = await ai_client.complete(
                 system=TOPIC_DEDUP_SYSTEM,
                 user=TOPIC_DEDUP_USER.format(items=items_text),
@@ -464,12 +520,8 @@ class HorizonOrchestrator:
 
         return [item for i, item in enumerate(items) if i not in drop_indices]
 
-    async def _expand_twitter_discussion(self, items: List[ContentItem]) -> None:
-        """Second-stage: fetch reply text for important Twitter items and re-analyze.
-
-        Only runs when sources.twitter.fetch_reply_text is True.
-        Bounded by max_tweets_to_expand to control cost.
-        """
+    async def _expand_twitter_discussion(self, items: List[ContentItem], ai_client=None) -> None:
+        """Second-stage: fetch reply text for important Twitter items and re-analyze."""
         tw_cfg = self.config.sources.twitter
         if not tw_cfg or not tw_cfg.enabled or not tw_cfg.fetch_reply_text:
             return
@@ -510,11 +562,10 @@ class HorizonOrchestrator:
         self.console.print(
             f"   Re-analyzing {len(expanded)} Twitter items with reply context...\n"
         )
-        ai_client = create_ai_client(self.config.ai)
         analyzer = ContentAnalyzer(ai_client)
         await analyzer.analyze_batch(expanded)
 
-    async def _enrich_important_items(self, items: List[ContentItem]) -> None:
+    async def _enrich_important_items(self, items: List[ContentItem], ai_client=None) -> None:
         """Enrich items with background knowledge (2nd AI pass).
 
         For each item that passed the score threshold, call AI to generate
@@ -522,28 +573,28 @@ class HorizonOrchestrator:
 
         Args:
             items: Important items to enrich (modified in-place)
+            ai_client: Shared AI client
         """
         if not items:
             return
 
         self.console.print("📚 Enriching with background knowledge...")
-        ai_client = create_ai_client(self.config.ai)
-        enricher = ContentEnricher(ai_client)
+        enricher = ContentEnricher(ai_client, languages=self.config.ai.languages)
         await enricher.enrich_batch(items)
         self.console.print(f"   Enriched {len(items)} items\n")
 
-    async def _analyze_content(self, items: List[ContentItem]) -> List[ContentItem]:
+    async def _analyze_content(self, items: List[ContentItem], ai_client=None) -> List[ContentItem]:
         """Analyze content items with AI.
 
         Args:
             items: Items to analyze
+            ai_client: Shared AI client
 
         Returns:
             List[ContentItem]: Analyzed items
         """
         self.console.print("🤖 Analyzing content with AI...")
 
-        ai_client = create_ai_client(self.config.ai)
         analyzer = ContentAnalyzer(ai_client)
 
         return await analyzer.analyze_batch(items)

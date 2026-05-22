@@ -18,7 +18,7 @@ from ddgs import DDGS
 from .client import AIClient
 from .prompts import (
     CONCEPT_EXTRACTION_SYSTEM, CONCEPT_EXTRACTION_USER,
-    CONTENT_ENRICHMENT_SYSTEM, CONTENT_ENRICHMENT_USER,
+    build_enrichment_system, build_enrichment_user,
 )
 from .utils import parse_json_response
 from ..models import ContentItem
@@ -27,8 +27,11 @@ from ..models import ContentItem
 class ContentEnricher:
     """Enriches high-scoring content items with background knowledge."""
 
-    def __init__(self, ai_client: AIClient):
+    def __init__(self, ai_client: AIClient, languages: List[str] = None):
         self.client = ai_client
+        self.languages = languages or ["en"]
+        self._enrichment_system = build_enrichment_system(self.languages)
+        self._enrichment_user_template = build_enrichment_user(self.languages)
 
     def _get_concurrency(self) -> int:
         """Return the configured enrichment concurrency, clamped to 1 or above."""
@@ -112,7 +115,6 @@ class ContentEnricher:
             title=item.title,
             summary=item.ai_summary or item.title,
             tags=", ".join(item.ai_tags) if item.ai_tags else "",
-            content=content_text[:1000],
         )
 
         try:
@@ -172,7 +174,7 @@ class ContentEnricher:
         available_urls = {r["url"]: r["title"] for r in all_results if r.get("url")}
 
         # Step 3: AI generates background grounded in search results
-        user_prompt = CONTENT_ENRICHMENT_USER.format(
+        user_prompt = self._enrichment_user_template.format(
             title=item.title,
             url=str(item.url),
             summary=item.ai_summary or item.title,
@@ -185,39 +187,38 @@ class ContentEnricher:
         )
 
         response = await self.client.complete(
-            system=CONTENT_ENRICHMENT_SYSTEM,
+            system=self._enrichment_system,
             user=user_prompt,
         )
 
         # Parse JSON response with robust fallback
         result = self._parse_json_response(response)
         if result is None:
-            # Gracefully degrade: skip enrichment instead of raising
-            # (raising would trigger retries that won't help with a parse error)
             print(f"Warning: could not parse enrichment response for {item.id}, skipping enrichment")
             return
 
         # Combine structured sub-fields into per-language detailed_summary
-        for lang in ("en", "zh"):
-            if result.get(f"title_{lang}"):
-                val = result[f"title_{lang}"]
-                item.metadata[f"title_{lang}"] = val.get("text") or str(val) if isinstance(val, dict) else str(val)
+        for lang in self.languages:
+            suffix = lang if lang in ("en", "zh") else lang
+            if result.get(f"title_{suffix}"):
+                val = result[f"title_{suffix}"]
+                item.metadata[f"title_{suffix}"] = val.get("text") or str(val) if isinstance(val, dict) else str(val)
 
             parts = []
             for field in ("whats_new", "why_it_matters", "key_details"):
-                text = result.get(f"{field}_{lang}", "").strip()
+                text = result.get(f"{field}_{suffix}", "").strip()
                 if text:
                     parts.append(text)
             if parts:
-                item.metadata[f"detailed_summary_{lang}"] = " ".join(parts)
+                item.metadata[f"detailed_summary_{suffix}"] = " ".join(parts)
 
-            if result.get(f"background_{lang}"):
-                val = result[f"background_{lang}"]
-                item.metadata[f"background_{lang}"] = val.get("text") or str(val) if isinstance(val, dict) else str(val)
+            if result.get(f"background_{suffix}"):
+                val = result[f"background_{suffix}"]
+                item.metadata[f"background_{suffix}"] = val.get("text") or str(val) if isinstance(val, dict) else str(val)
 
-            if result.get(f"community_discussion_{lang}"):
-                val = result[f"community_discussion_{lang}"]
-                item.metadata[f"community_discussion_{lang}"] = val.get("text") or str(val) if isinstance(val, dict) else str(val)
+            if result.get(f"community_discussion_{suffix}"):
+                val = result[f"community_discussion_{suffix}"]
+                item.metadata[f"community_discussion_{suffix}"] = val.get("text") or str(val) if isinstance(val, dict) else str(val)
 
         # Store citation sources — only URLs that actually came from our search results
         if result.get("sources") and available_urls:
@@ -229,7 +230,9 @@ class ContentEnricher:
             if valid:
                 item.metadata["sources"] = valid
 
-        # Backward-compatible fallback fields (English as default)
-        item.metadata["detailed_summary"] = item.metadata.get("detailed_summary_en", "")
-        item.metadata["background"] = item.metadata.get("background_en", "")
-        item.metadata["community_discussion"] = item.metadata.get("community_discussion_en", "")
+        # Backward-compatible fallback fields (use first configured language)
+        primary = "zh" if "zh" in self.languages else (self.languages[0] if self.languages else "en")
+        primary_suffix = {"zh": "zh", "en": "en"}.get(primary, primary)
+        item.metadata["detailed_summary"] = item.metadata.get(f"detailed_summary_{primary_suffix}", "")
+        item.metadata["background"] = item.metadata.get(f"background_{primary_suffix}", "")
+        item.metadata["community_discussion"] = item.metadata.get(f"community_discussion_{primary_suffix}", "")

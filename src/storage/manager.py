@@ -4,8 +4,9 @@ import json
 import os
 import re
 import shutil
+from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any
+from typing import Any, Optional
 
 from pydantic import ValidationError
 
@@ -148,3 +149,33 @@ class StorageManager:
         subscribers_path = self.data_dir / "subscribers.json"
         with open(subscribers_path, "w", encoding="utf-8") as f:
             json.dump(subscribers, f, indent=2)
+
+    def load_last_run(self) -> Optional[datetime]:
+        """Load the completion time of the last successful run.
+
+        Returns:
+            datetime with UTC timezone, or None if no previous run recorded.
+        """
+        last_run_path = self.data_dir / "last_run.json"
+        if not last_run_path.exists():
+            return None
+        try:
+            with open(last_run_path, "r", encoding="utf-8") as f:
+                data = json.load(f)
+            ts = data.get("last_run")
+            if ts:
+                return datetime.fromisoformat(ts)
+        except (json.JSONDecodeError, ValueError, KeyError):
+            return None
+        return None
+
+    def save_last_run(self, timestamp: datetime) -> None:
+        """Save the completion time of the current run.
+
+        Args:
+            timestamp: The time to record (should be timezone-aware).
+        """
+        last_run_path = self.data_dir / "last_run.json"
+        ts_str = timestamp.isoformat()
+        with open(last_run_path, "w", encoding="utf-8") as f:
+            json.dump({"last_run": ts_str}, f, indent=2)

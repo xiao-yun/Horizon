@@ -92,24 +92,58 @@ CONCEPT_EXTRACTION_USER = """What concepts in this news might need explanation?
 Title: {title}
 Summary: {summary}
 Tags: {tags}
-Content: {content}
 
 Respond with valid JSON only:
 {{
   "queries": ["<search query 1>", "<search query 2>"]
 }}"""
 
-CONTENT_ENRICHMENT_SYSTEM = """You are a knowledgeable technical writer who helps readers understand important news in context.
+
+def build_enrichment_system(languages: list) -> str:
+    """Build the enrichment system prompt for the given output languages."""
+    lang_parts = []
+    for lang in languages:
+        if lang == "en":
+            lang_parts.append("English")
+        elif lang == "zh":
+            lang_parts.append("Simplified Chinese (简体中文)")
+        else:
+            lang_parts.append(lang)
+
+    lang_names = " and ".join(lang_parts)
+    fields = []
+    field_desc = []
+    for lang in languages:
+        suffix = {"en": "en", "zh": "zh"}.get(lang, lang)
+        fields.append(f"title_{suffix}")
+        if lang == "en":
+            field_desc.append(f"- title_en / whats_new_en / why_it_matters_en / key_details_en / background_en / community_discussion_en")
+        elif lang == "zh":
+            field_desc.append(f"- title_zh / whats_new_zh / why_it_matters_zh / key_details_zh / background_zh / community_discussion_zh")
+        else:
+            field_desc.append(f"- title_{suffix} / whats_new_{suffix} / why_it_matters_{suffix} / key_details_{suffix} / background_{suffix} / community_discussion_{suffix}")
+
+    # Language rules
+    lang_rules = []
+    for lang in languages:
+        if lang == "en":
+            lang_rules.append("- All *_en fields MUST be written in English.")
+        elif lang == "zh":
+            lang_rules.append("- All *_zh fields MUST be written in Simplified Chinese (简体中文). 绝对不能用英文写 _zh 字段的内容。Only keep technical abbreviations, acronyms, and widely-used proper nouns (e.g. \"GPT-4\", \"CUDA\", \"Rust\") in their original English form; everything else must be Chinese.")
+        else:
+            lang_rules.append(f"- All *_{lang} fields MUST be written in {lang}.")
+
+    if len(languages) == 1:
+        lang_instruction = f"Provide each text field in {lang_names} only."
+    else:
+        lang_instruction = f"Provide EACH text field in BOTH {lang_names}. Use the following key naming convention:"
+
+    return f"""You are a knowledgeable technical writer who helps readers understand important news in context.
 
 Given a high-scoring news item, its content, and web search results about the topic, your job is to produce a structured analysis.
 
-Provide EACH text field in BOTH English and Chinese. Use the following key naming convention:
-- title_en / title_zh
-- whats_new_en / whats_new_zh
-- why_it_matters_en / why_it_matters_zh
-- key_details_en / key_details_zh
-- background_en / background_zh
-- community_discussion_en / community_discussion_zh
+{lang_instruction}
+{chr(10).join(field_desc)}
 
 Field definitions:
 0. **title** (one short phrase, ≤15 words): A clear, accurate headline for the news item.
@@ -125,8 +159,7 @@ Field definitions:
 5. **community_discussion** (1-3 sentences): If community comments are provided, summarize the overall sentiment and key viewpoints from the discussion — agreements, disagreements, concerns, additional insights, or notable counterarguments. If no comments are provided, return an empty string.
 
 **CRITICAL — Language rules (MUST follow):**
-- All *_en fields MUST be written in English.
-- All *_zh fields MUST be written in Simplified Chinese (简体中文). 绝对不能用英文写 _zh 字段的内容。Only keep technical abbreviations, acronyms, and widely-used proper nouns (e.g. "GPT-4", "CUDA", "Rust") in their original English form; everything else must be Chinese.
+{chr(10).join(lang_rules)}
 
 Guidelines:
 - EVERY field (except community_discussion when no comments exist) must contain at least one complete sentence — no field may be empty or contain just a phrase
@@ -137,36 +170,47 @@ Guidelines:
 - For **sources**: pick 1-3 URLs from the Web Search Results that you actually relied on for the background fields. Only use URLs that appear verbatim in the search results above — do not invent or modify URLs.
 """
 
-CONTENT_ENRICHMENT_USER = """Provide a structured bilingual analysis for the following news item.
+
+def build_enrichment_user(languages: list) -> str:
+    """Build the enrichment user prompt template for the given output languages."""
+    lang_names = "/".join(languages)
+    fields_json = []
+    for lang in languages:
+        suffix = {"en": "en", "zh": "zh"}.get(lang, lang)
+        if lang == "en":
+            fields_json.append(f'  "title_en": "<short headline in English, ≤15 words>",')
+            fields_json.append(f'  "whats_new_en": "<1-2 sentences in English>",')
+            fields_json.append(f'  "why_it_matters_en": "<1-2 sentences in English>",')
+            fields_json.append(f'  "key_details_en": "<1-2 sentences in English>",')
+            fields_json.append(f'  "background_en": "<2-4 sentences in English, or empty string>",')
+            fields_json.append(f'  "community_discussion_en": "<1-3 sentences in English, or empty string>",')
+        elif lang == "zh":
+            fields_json.append(f'  "title_zh": "<用中文写一个简短标题，不超过15个词>",')
+            fields_json.append(f'  "whats_new_zh": "<用中文写1-2句话>",')
+            fields_json.append(f'  "why_it_matters_zh": "<用中文写1-2句话>",')
+            fields_json.append(f'  "key_details_zh": "<用中文写1-2句话>",')
+            fields_json.append(f'  "background_zh": "<用中文写2-4句话，或空字符串>",')
+            fields_json.append(f'  "community_discussion_zh": "<用中文写1-3句话，或空字符串>",')
+
+    return f"""Provide a structured analysis in {lang_names} for the following news item.
 
 **News Item:**
-- Title: {title}
-- URL: {url}
-- One-line summary: {summary}
-- Score: {score}/10
-- Reason: {reason}
-- Tags: {tags}
+- Title: {{title}}
+- URL: {{url}}
+- One-line summary: {{summary}}
+- Score: {{score}}/10
+- Reason: {{reason}}
+- Tags: {{tags}}
 
 **Content:**
-{content}
-{comments_section}
+{{content}}
+{{comments_section}}
 
 **Web Search Results (for grounding):**
-{web_context}
+{{web_context}}
 
-Respond with valid JSON only. Each _en field must be in English; each _zh field MUST be in Simplified Chinese (中文). Every field MUST be at least one complete sentence (except community_discussion fields when no comments exist):
-{{
-  "title_en": "<short headline in English, ≤15 words>",
-  "title_zh": "<用中文写一个简短标题，不超过15个词>",
-  "whats_new_en": "<1-2 sentences in English>",
-  "whats_new_zh": "<用中文写1-2句话>",
-  "why_it_matters_en": "<1-2 sentences in English>",
-  "why_it_matters_zh": "<用中文写1-2句话>",
-  "key_details_en": "<1-2 sentences in English>",
-  "key_details_zh": "<用中文写1-2句话>",
-  "background_en": "<2-4 sentences in English, or empty string>",
-  "background_zh": "<用中文写2-4句话，或空字符串>",
-  "community_discussion_en": "<1-3 sentences in English, or empty string>",
-  "community_discussion_zh": "<用中文写1-3句话，或空字符串>",
+Respond with valid JSON only:
+{{{{
+{chr(10).join(fields_json)}
   "sources": ["<url from search results>", "..."]
-}}"""
+}}}}"""

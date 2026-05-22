@@ -102,10 +102,10 @@ class RSSScraper(BaseScraper):
                     url=entry.get("link", str(source.url)),
                     content=content,
                     author=entry.get("author", source.name),
+                    category=source.category,
                     published_at=published_at,
                     metadata={
                         "feed_name": source.name,
-                        "category": source.category,
                         "tags": [tag.term for tag in entry.get("tags", [])],
                     },
                 )
