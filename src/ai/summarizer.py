@@ -146,30 +146,46 @@ class DailySummarizer:
             cat_items = groups[cat]
             cat_display = cat_names.get(cat, cat)
             toc_lines.append(f"> ## {cat_display}")
-            parts.append(f"## {cat_display}\n\n")
-            cat_idx = 0
-            for item in cat_items:
-                cat_idx += 1
+            has_non_trending = any(
+                it.source_type.value != "github_trending" for it in cat_items
+            )
+            if has_non_trending:
+                parts.append(f"## {cat_display}\n\n")
+            for cat_idx, item in enumerate(cat_items, start=1):
                 anchor = f"item-{cat}-{cat_idx}"
-                # GitHub Trending: use raw repo info instead of AI title
                 if item.source_type.value == "github_trending":
                     repo = item.metadata.get("repo", "")
                     stars_today = item.metadata.get("stars_today", 0)
-                    desc = item.metadata.get("description") or ""
+                    if language == "zh":
+                        desc = (
+                            item.metadata.get("title_zh")
+                            or item.ai_summary
+                            or ""
+                        )
+                    else:
+                        desc = item.metadata.get("description") or ""
                     t = f"{repo} +{stars_today}⭐"
                     if desc:
                         t += f": {desc}"
+                    if language == "zh":
+                        t = _pangu(t)
+                    score = item.ai_score or "?"
+                    src_label = _source_label(item)
+                    time_str = item.published_at.strftime("%H:%M") if item.published_at else ""
+                    # GitHub Trending: link directly to project, no detail section
+                    toc_lines.append(f"> {cat_idx}. [{t}]({item.url}) ⭐️ {score}/10 · {src_label} · {time_str}")
                 else:
                     _t = item.metadata.get(f"title_{language}") or item.title
                     t = str(_t).replace("[", "(").replace("]", ")")
-                if language == "zh":
-                    t = _pangu(t)
-                score = item.ai_score or "?"
-                src_label = _source_label(item)
-                time_str = item.published_at.strftime("%H:%M") if item.published_at else ""
-                toc_lines.append(f"> {cat_idx}. [{t}](#{anchor}) ⭐️ {score}/10 · {src_label} · {time_str}")
-                parts.append(self._format_item(item, labels, language, anchor))
-            parts.append("\n")
+                    if language == "zh":
+                        t = _pangu(t)
+                    score = item.ai_score or "?"
+                    src_label = _source_label(item)
+                    time_str = item.published_at.strftime("%H:%M") if item.published_at else ""
+                    toc_lines.append(f"> {cat_idx}. [{t}](#{anchor}) ⭐️ {score}/10 · {src_label} · {time_str}")
+                    parts.append(self._format_item(item, labels, language, anchor))
+            if has_non_trending:
+                parts.append("\n")
 
         toc = "\n".join(toc_lines) + "\n\n"
 
