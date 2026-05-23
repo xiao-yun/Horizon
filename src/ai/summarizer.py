@@ -151,8 +151,17 @@ class DailySummarizer:
             for item in cat_items:
                 cat_idx += 1
                 anchor = f"item-{cat}-{cat_idx}"
-                _t = item.metadata.get(f"title_{language}") or item.title
-                t = str(_t).replace("[", "(").replace("]", ")")
+                # GitHub Trending: use raw repo info instead of AI title
+                if item.source_type.value == "github_trending":
+                    repo = item.metadata.get("repo", "")
+                    stars_today = item.metadata.get("stars_today", 0)
+                    desc = item.metadata.get("description") or ""
+                    t = f"{repo} +{stars_today}⭐"
+                    if desc:
+                        t += f": {desc}"
+                else:
+                    _t = item.metadata.get(f"title_{language}") or item.title
+                    t = str(_t).replace("[", "(").replace("]", ")")
                 if language == "zh":
                     t = _pangu(t)
                 score = item.ai_score or "?"
