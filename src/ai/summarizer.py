@@ -7,7 +7,7 @@ from typing import List, Dict
 from ..models import ContentItem
 
 
-_CJK = r"[\u4e00-\u9fff\u3400-\u4dbf]"
+_CJK = r"[一-鿿㐀-䶿]"
 _ASCII = r"[A-Za-z0-9]"
 
 
@@ -129,8 +129,8 @@ class DailySummarizer:
 
         header = (
             f"# {labels['header']} - {date}\n\n"
-            f"> From {total_fetched} items, {len(items)} important content pieces were selected\n\n"
-            "---\n\n"
+            f"> From {total_fetched} items, {len(items)} important content pieces were selected\n"
+            f">\n"
         )
 
         # Group items by category (preserving score order within each group)
@@ -139,17 +139,18 @@ class DailySummarizer:
             cat = item.category or "general"
             groups[cat].append(item)
 
-        # TOC with category sections
-        toc_entries = []
+        # TOC within blockquote, per-category numbering
+        toc_lines = []
         parts = []
-        global_idx = 0
         for cat in sorted(groups):
             cat_items = groups[cat]
             cat_display = cat_names.get(cat, cat)
-            toc_entries.append(f"## {cat_display}")
+            toc_lines.append(f"> ## {cat_display}")
             parts.append(f"## {cat_display}\n\n")
+            cat_idx = 0
             for item in cat_items:
-                global_idx += 1
+                cat_idx += 1
+                anchor = f"item-{cat}-{cat_idx}"
                 _t = item.metadata.get(f"title_{language}") or item.title
                 t = str(_t).replace("[", "(").replace("]", ")")
                 if language == "zh":
@@ -157,11 +158,11 @@ class DailySummarizer:
                 score = item.ai_score or "?"
                 src_label = _source_label(item)
                 time_str = item.published_at.strftime("%H:%M") if item.published_at else ""
-                toc_entries.append(f"{global_idx}. [{t}](#item-{global_idx}) \u2b50\ufe0f {score}/10 \u00b7 {src_label} \u00b7 {time_str}")
-                parts.append(self._format_item(item, labels, language, global_idx))
+                toc_lines.append(f"> {cat_idx}. [{t}](#{anchor}) ⭐️ {score}/10 · {src_label} · {time_str}")
+                parts.append(self._format_item(item, labels, language, anchor))
             parts.append("\n")
 
-        toc = "\n".join(toc_entries) + "\n\n---\n\n"
+        toc = "\n".join(toc_lines) + "\n\n"
 
         return header + toc + "".join(parts)
 
@@ -198,7 +199,7 @@ class DailySummarizer:
             score = item.ai_score or "?"
             src_label = _source_label(item)
             time_str = item.published_at.strftime("%H:%M") if item.published_at else ""
-            entries.append(f"{i}. [{title}]({item.url}) \u2b50\ufe0f {score}/10 \u00b7 {src_label} \u00b7 {time_str}")
+            entries.append(f"{i}. [{title}]({item.url}) ⭐️ {score}/10 · {src_label} · {time_str}")
 
         return header + "\n".join(entries)
 
@@ -212,15 +213,21 @@ class DailySummarizer:
         """Generate one item message for multi-message webhook delivery."""
         labels = LABELS.get(language, LABELS["en"])
         prefix = f"第 {index}/{total} 条\n\n" if language == "zh" else f"Item {index}/{total}\n\n"
-        return prefix + self._format_item(item, labels, language, index).rstrip("-\n ")
+        anchor = f"item-webhook-{index}"
+        return prefix + self._format_item(item, labels, language, anchor).rstrip("-\n ")
 
-    def _format_item(self, item: ContentItem, labels: dict, language: str, index: int) -> str:
+    def _format_item(self, item: ContentItem, labels: dict, language: str, anchor: str = "") -> str:
         """Format a single ContentItem into Markdown."""
-        _title = item.metadata.get(f"title_{language}") or item.title
-        title = str(_title).replace("[", "(").replace("]", ")")
         url = str(item.url)
         score = item.ai_score or "?"
         meta = item.metadata
+
+        # GitHub Trending items: use raw repo info, skip AI-generated fields
+        if item.source_type.value == "github_trending":
+            return self._format_github_trending(item, labels, language, anchor, url, float(item.ai_score or 0), meta)
+
+        _title = item.metadata.get(f"title_{language}") or item.title
+        title = str(_title).replace("[", "(").replace("]", ")")
 
         summary = (
             meta.get(f"detailed_summary_{language}")
@@ -253,7 +260,7 @@ class DailySummarizer:
         if item.published_at:
             day = item.published_at.strftime("%d").lstrip("0")
             source_parts.append(item.published_at.strftime(f"%b {day}, %H:%M"))
-        source_line = " \u00b7 ".join(source_parts)  # ·
+        source_line = " · ".join(source_parts)  # ·
 
         discussion_url = meta.get("discussion_url")
         if discussion_url:
@@ -262,8 +269,8 @@ class DailySummarizer:
                 source_line += f' · [{labels["discussion"]}]({discussion_url})'
 
         lines = [
-            f'<a id="item-{index}"></a>',
-            f"## [{title}]({url}) \u2b50\ufe0f {score}/10",  # ⭐️
+            f'<a id="{anchor}"></a>',
+            f"## [{title}]({url}) ⭐️ {score}/10",  # ⭐️
             "",
             summary,
             "",
@@ -290,6 +297,45 @@ class DailySummarizer:
             tags_str = ", ".join([f"`#{t}`" for t in item.ai_tags])
             lines.append("")
             lines.append(f"**{labels['tags']}**: {tags_str}")
+
+        lines.append("")
+        lines.append("---")
+
+        return "\n".join(lines) + "\n\n"
+
+    def _format_github_trending(
+        self, item: ContentItem, labels: dict, language: str,
+        anchor: str, url: str, score: float, meta: dict,
+    ) -> str:
+        """Format a GitHub Trending item using raw repo description."""
+        repo = meta.get("repo", "")
+        stars_today = meta.get("stars_today", 0)
+        description = meta.get("description") or ""
+        language_name = meta.get("language") or ""
+
+        # Title: repo +N⭐: description
+        title = f"{repo} +{stars_today}⭐"
+        if description:
+            title += f": {description}"
+
+        if language == "zh":
+            title = _pangu(title)
+
+        detail_parts = [f"GitHub Trending 今日获得 {stars_today} 星"]
+        if language_name:
+            detail_parts.append(f"语言: {language_name}")
+        if meta.get("forks_today"):
+            detail_parts.append(f"今日 Fork: {meta['forks_today']}")
+        body = " · ".join(detail_parts)
+
+        lines = [
+            f'<a id="{anchor}"></a>',
+            f"## [{title}]({url}) ⭐️ {score}/10",
+            "",
+            body,
+            "",
+            f"GitHub Trending · {meta.get('since', 'daily')}",
+        ]
 
         lines.append("")
         lines.append("---")
