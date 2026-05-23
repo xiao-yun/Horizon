@@ -61,14 +61,38 @@ CATEGORY_NAMES = {
     "en": {
         "ai-tools": "AI & Tools",
         "data-warehouse": "Data Warehouse",
+        "github-trendings": "GitHub Trendings",
         "general": "General",
     },
     "zh": {
         "ai-tools": "AI 与工具",
         "data-warehouse": "数据仓库",
+        "github-trendings": "GitHub 趋势",
         "general": "综合",
     },
 }
+
+SOURCE_DISPLAY = {
+    "hackernews": "HN",
+    "github": "GitHub",
+    "reddit": "Reddit",
+    "telegram": "TG",
+    "twitter": "X",
+    "openbb": "OpenBB",
+    "ossinsight": "OSS",
+    "github_trending": "GH Trending",
+    "rss": "RSS",
+}
+
+def _source_label(item: ContentItem) -> str:
+    """Return a compact source label for TOC entries."""
+    src = item.source_type.value
+    label = SOURCE_DISPLAY.get(src, src)
+    if src == "reddit" and item.metadata.get("subreddit"):
+        label = f"r/{item.metadata['subreddit']}"
+    if src == "rss" and item.metadata.get("feed_name"):
+        label = item.metadata["feed_name"]
+    return label
 
 
 class DailySummarizer:
@@ -131,7 +155,9 @@ class DailySummarizer:
                 if language == "zh":
                     t = _pangu(t)
                 score = item.ai_score or "?"
-                toc_entries.append(f"{global_idx}. [{t}](#item-{global_idx}) \u2b50\ufe0f {score}/10")
+                src_label = _source_label(item)
+                time_str = item.published_at.strftime("%H:%M") if item.published_at else ""
+                toc_entries.append(f"{global_idx}. [{t}](#item-{global_idx}) \u2b50\ufe0f {score}/10 \u00b7 {src_label} \u00b7 {time_str}")
                 parts.append(self._format_item(item, labels, language, global_idx))
             parts.append("\n")
 
@@ -170,7 +196,9 @@ class DailySummarizer:
             if language == "zh":
                 title = _pangu(title)
             score = item.ai_score or "?"
-            entries.append(f"{i}. [{title}]({item.url}) \u2b50\ufe0f {score}/10")
+            src_label = _source_label(item)
+            time_str = item.published_at.strftime("%H:%M") if item.published_at else ""
+            entries.append(f"{i}. [{title}]({item.url}) \u2b50\ufe0f {score}/10 \u00b7 {src_label} \u00b7 {time_str}")
 
         return header + "\n".join(entries)
 

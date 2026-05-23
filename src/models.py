@@ -17,6 +17,7 @@ class SourceType(str, Enum):
     TWITTER = "twitter"
     OPENBB = "openbb"
     OSSINSIGHT = "ossinsight"
+    GITHUB_TRENDING = "github_trending"
 
 
 class ContentItem(BaseModel):
@@ -215,6 +216,22 @@ class OSSInsightConfig(BaseModel):
     max_items: int = 30
 
 
+class GitHubTrendingConfig(BaseModel):
+    """GitHub Trending page scraper configuration.
+
+    Scrapes github.com/trending to pick up repositories that are gaining
+    attention in the community. Supports daily and weekly time windows.
+    """
+
+    enabled: bool = False
+    since: str = "daily"  # daily, weekly
+    languages: List[str] = Field(default_factory=lambda: [""])
+    spoken_language: str = ""  # empty = all, or e.g. "zh", "en"
+    min_stars: int = 5
+    max_items: int = 30
+    category: str = "github-trendings"
+
+
 class SourcesConfig(BaseModel):
     """All sources configuration."""
 
@@ -226,6 +243,7 @@ class SourcesConfig(BaseModel):
     twitter: Optional[TwitterConfig] = None
     openbb: Optional[OpenBBConfig] = None
     ossinsight: OSSInsightConfig = Field(default_factory=OSSInsightConfig)
+    github_trending: GitHubTrendingConfig = Field(default_factory=GitHubTrendingConfig)
 
 
 class WebhookConfig(BaseModel):

@@ -20,6 +20,7 @@ from .scrapers.telegram import TelegramScraper
 from .scrapers.twitter import TwitterScraper
 from .scrapers.openbb import OpenBBScraper
 from .scrapers.ossinsight import OSSInsightScraper
+from .scrapers.github_trending import GitHubTrendingScraper
 from .ai.client import create_ai_client
 from .ai.analyzer import ContentAnalyzer
 from .ai.summarizer import DailySummarizer
@@ -299,6 +300,11 @@ class HorizonOrchestrator:
                 oss_scraper = OSSInsightScraper(self.config.sources.ossinsight, client)
                 tasks.append(self._fetch_with_progress("OSS Insight", oss_scraper, since))
 
+            # GitHub Trending
+            if self.config.sources.github_trending and self.config.sources.github_trending.enabled:
+                gt_scraper = GitHubTrendingScraper(self.config.sources.github_trending, client)
+                tasks.append(self._fetch_with_progress("GitHub Trending", gt_scraper, since))
+
             # Fetch all concurrently
             results = await asyncio.gather(*tasks, return_exceptions=True)
 
@@ -384,6 +390,8 @@ class HorizonOrchestrator:
             return f"@{meta['channel']}"
         if meta.get("period") and meta.get("repo"):
             return f"ossinsight:{meta.get('primary_language', 'all')}"
+        if meta.get("since") and meta.get("repo"):
+            return f"trending:{meta.get('language') or 'all'}"
         if meta.get("repo"):
             return meta["repo"]
         if meta.get("watchlist"):

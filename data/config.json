@@ -175,6 +175,15 @@
       "keywords": [],
       "min_stars": 10,
       "max_items": 30
+    },
+    "github_trending": {
+      "enabled": true,
+      "since": "daily",
+      "languages": [""],
+      "spoken_language": "",
+      "min_stars": 5,
+      "max_items": 30,
+      "category": "github-trendings"
     }
   },
   "filtering": {
@@ -182,7 +191,8 @@
     "time_window_hours": 24,
     "category_top_n": {
       "ai-tools": 10,
-      "data-warehouse": 10
+      "data-warehouse": 10,
+      "github-trendings": 10
     },
     "category_default_top_n": 5
   },
