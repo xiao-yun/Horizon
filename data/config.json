@@ -64,6 +64,37 @@
         "repo": "flink",
         "enabled": true,
         "category": "data-warehouse"
+      },
+      {
+        "type": "repo_releases",
+        "owner": "apache",
+        "repo": "hudi",
+        "enabled": true,
+        "category": "data-warehouse"
+      },
+      {
+        "type": "issue_search",
+        "owner": "apache",
+        "repo": "iceberg",
+        "labels": "proposal",
+        "enabled": true,
+        "category": "data-warehouse"
+      },
+      {
+        "type": "issue_search",
+        "owner": "delta-io",
+        "repo": "delta",
+        "search_query": "proposal in:title",
+        "enabled": true,
+        "category": "data-warehouse"
+      },
+      {
+        "type": "issue_search",
+        "owner": "apache",
+        "repo": "hudi",
+        "search_query": "proposal in:title",
+        "enabled": true,
+        "category": "data-warehouse"
       }
     ],
     "hackernews": {

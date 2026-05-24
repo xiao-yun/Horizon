@@ -76,10 +76,12 @@ class AIConfig(BaseModel):
 class GitHubSourceConfig(BaseModel):
     """GitHub source configuration."""
 
-    type: str  # "user_events", "repo_releases", etc.
+    type: str  # "user_events", "repo_releases", "issue_search", etc.
     username: Optional[str] = None
     owner: Optional[str] = None
     repo: Optional[str] = None
+    labels: Optional[str] = None  # comma-separated labels for issue_search
+    search_query: Optional[str] = None  # raw query fragment for issue_search (e.g. "proposal in:title")
     enabled: bool = True
     category: Optional[str] = None
 

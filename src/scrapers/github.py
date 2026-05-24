@@ -64,6 +64,11 @@ class GitHubScraper(BaseScraper):
                     source.owner, source.repo, since, source.category
                 )
                 items.extend(release_items)
+            elif source.type == "issue_search" and source.owner and source.repo:
+                issue_items = await self._fetch_issue_search(
+                    source.owner, source.repo, source.labels, source.search_query, since, source.category
+                )
+                items.extend(issue_items)
 
         return items
 
@@ -225,5 +230,74 @@ class GitHubScraper(BaseScraper):
 
         except httpx.HTTPError as e:
             logger.warning("Error fetching releases for %s/%s: %s", owner, repo, e)
+
+        return items
+
+    async def _fetch_issue_search(
+        self,
+        owner: str,
+        repo: str,
+        labels: Optional[str],
+        search_query: Optional[str],
+        since: datetime,
+        category: Optional[str] = None,
+    ) -> List[ContentItem]:
+        """Search issues by label or query (for proposal/RFC tracking).
+
+        Args:
+            owner: Repository owner
+            repo: Repository name
+            labels: Comma-separated label filter
+            search_query: Raw query fragment (e.g. "proposal in:title")
+            since: Only fetch issues updated after this time
+            category: Optional category from source config
+
+        Returns:
+            List[ContentItem]: Issue content items
+        """
+        query = f"repo:{owner}/{repo}+state:open"
+        if search_query:
+            query += f"+{search_query}"
+        elif labels:
+            for label in labels.split(","):
+                query += f"+label:{label.strip()}"
+
+        url = f"{self.base_url}/search/issues?q={query}&sort=updated&order=desc&per_page=10"
+        items = []
+
+        try:
+            response = await self.client.get(url, headers=self._get_headers(), follow_redirects=True)
+            response.raise_for_status()
+            data = response.json()
+
+            for issue in data.get("items", []):
+                updated_at = datetime.fromisoformat(
+                    issue["updated_at"].replace("Z", "+00:00")
+                )
+
+                if updated_at < since:
+                    continue
+
+                issue_labels = [l["name"] for l in issue.get("labels", [])]
+                item = ContentItem(
+                    id=self._generate_id("github", "issue", str(issue["id"])),
+                    source_type=SourceType.GITHUB,
+                    title=f"[{owner}/{repo}] #{issue['number']}: {issue['title']}",
+                    url=issue["html_url"],
+                    content=issue.get("body", "")[:500],
+                    author=issue["user"]["login"] if issue.get("user") else "",
+                    category=category,
+                    published_at=updated_at,
+                    metadata={
+                        "repo": f"{owner}/{repo}",
+                        "issue_number": issue["number"],
+                        "labels": issue_labels,
+                        "state": issue.get("state", "open"),
+                    }
+                )
+                items.append(item)
+
+        except httpx.HTTPError as e:
+            logger.warning("Error searching issues for %s/%s: %s", owner, repo, e)
 
         return items
