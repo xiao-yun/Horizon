@@ -37,6 +37,11 @@ def main():
 
     parser = argparse.ArgumentParser(description="Horizon - AI-Driven Information Aggregation System")
     parser.add_argument("--hours", type=int, help="Force fetch from last N hours")
+    parser.add_argument(
+        "--categories",
+        type=str,
+        help="Comma-separated category filter (e.g. 'data-warehouse,ai-tools'). Only fetch and analyze matching sources.",
+    )
     args = parser.parse_args()
 
     try:
@@ -67,9 +72,14 @@ def main():
             console.print(f"[bold red]❌ Error loading configuration: {e}[/bold red]")
             sys.exit(1)
 
+        # Parse categories filter
+        categories = None
+        if args.categories:
+            categories = [c.strip() for c in args.categories.split(",") if c.strip()]
+
         # Create and run orchestrator
         orchestrator = HorizonOrchestrator(config, storage)
-        asyncio.run(orchestrator.run(force_hours=args.hours))
+        asyncio.run(orchestrator.run(force_hours=args.hours, categories=categories))
 
     except KeyboardInterrupt:
         console.print("\n[yellow]⚠️  Interrupted by user[/yellow]")

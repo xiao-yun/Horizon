@@ -48,11 +48,12 @@ class HorizonOrchestrator:
             else None
         )
 
-    async def run(self, force_hours: int = None) -> None:
+    async def run(self, force_hours: int = None, categories: List[str] = None) -> None:
         """Execute the complete workflow.
 
         Args:
             force_hours: Optional override for time window in hours
+            categories: Optional list of category names to filter sources by
         """
         self.console.print("[bold cyan]🌅 Horizon - Starting aggregation...[/bold cyan]\n")
 
@@ -75,7 +76,7 @@ class HorizonOrchestrator:
             self.console.print(f"📅 Fetching content since: {since.strftime('%Y-%m-%d %H:%M:%S')}\n")
 
             # 2. Fetch content from all sources
-            all_items = await self.fetch_all_sources(since)
+            all_items = await self.fetch_all_sources(since, categories=categories)
             self.console.print(f"📥 Fetched {len(all_items)} items from all sources\n")
 
             if not all_items:
@@ -246,64 +247,103 @@ class HorizonOrchestrator:
         hours = self.config.filtering.time_window_hours
         return datetime.now(timezone.utc) - timedelta(hours=hours)
 
-    async def fetch_all_sources(self, since: datetime) -> List[ContentItem]:
+    def _category_matches(self, source_category: Optional[str], categories: List[str]) -> bool:
+        """Check if a source's category matches the requested categories filter.
+
+        Args:
+            source_category: The category assigned to the source (None = no category)
+            categories: List of categories to include
+
+        Returns:
+            True if the source should be included
+        """
+        if not categories:
+            return True
+        if source_category is None:
+            return False
+        return source_category in categories
+
+    async def fetch_all_sources(self, since: datetime, categories: List[str] = None) -> List[ContentItem]:
         """Fetch content from all configured sources.
 
         This is a stable stage entry point for integrations such as MCP.
 
         Args:
             since: Fetch items published after this time
+            categories: Optional list of category names to filter sources by
 
         Returns:
             List[ContentItem]: All fetched items
         """
+        if categories:
+            self.console.print(f"🎯 Category filter: {', '.join(categories)}\n")
+
         async with httpx.AsyncClient(timeout=30.0) as client:
             tasks = []
 
-            # GitHub sources
+            # GitHub sources — filter by category
             if self.config.sources.github:
-                github_scraper = GitHubScraper(self.config.sources.github, client)
-                tasks.append(self._fetch_with_progress("GitHub", github_scraper, since))
+                gh_sources = [
+                    s for s in self.config.sources.github
+                    if s.enabled and self._category_matches(s.category, categories)
+                ]
+                if gh_sources:
+                    github_scraper = GitHubScraper(gh_sources, client)
+                    tasks.append(self._fetch_with_progress("GitHub", github_scraper, since))
 
             # Hacker News
-            if self.config.sources.hackernews.enabled:
+            if self.config.sources.hackernews.enabled and self._category_matches(
+                self.config.sources.hackernews.category, categories
+            ):
                 hn_scraper = HackerNewsScraper(self.config.sources.hackernews, client)
                 tasks.append(self._fetch_with_progress("Hacker News", hn_scraper, since))
 
-            # RSS feeds
+            # RSS feeds — filter by category
             if self.config.sources.rss:
-                rss_scraper = RSSScraper(self.config.sources.rss, client)
-                tasks.append(self._fetch_with_progress("RSS Feeds", rss_scraper, since))
+                rss_sources = [
+                    s for s in self.config.sources.rss
+                    if s.enabled and self._category_matches(s.category, categories)
+                ]
+                if rss_sources:
+                    rss_scraper = RSSScraper(rss_sources, client)
+                    tasks.append(self._fetch_with_progress("RSS Feeds", rss_scraper, since))
 
-            # Reddit
-            if self.config.sources.reddit.enabled:
+            # Reddit — skip entirely when category filter is active (no per-sub source category)
+            if self.config.sources.reddit.enabled and not categories:
                 reddit_scraper = RedditScraper(self.config.sources.reddit, client)
                 tasks.append(self._fetch_with_progress("Reddit", reddit_scraper, since))
 
-            # Telegram
-            if self.config.sources.telegram.enabled:
+            # Telegram — skip entirely when category filter is active (no per-channel category)
+            if self.config.sources.telegram.enabled and not categories:
                 telegram_scraper = TelegramScraper(self.config.sources.telegram, client)
                 tasks.append(self._fetch_with_progress("Telegram", telegram_scraper, since))
 
-            # Twitter
-            if self.config.sources.twitter and self.config.sources.twitter.enabled:
+            # Twitter — skip entirely when category filter is active (no per-user category)
+            if self.config.sources.twitter and self.config.sources.twitter.enabled and not categories:
                 twitter_scraper = TwitterScraper(self.config.sources.twitter, client)
                 tasks.append(self._fetch_with_progress("Twitter", twitter_scraper, since))
 
-            # OpenBB (financial news / filings via the OpenBB Platform SDK)
+            # OpenBB — filter watchlists by category
             if self.config.sources.openbb and self.config.sources.openbb.enabled:
-                openbb_scraper = OpenBBScraper(self.config.sources.openbb, client)
-                tasks.append(self._fetch_with_progress("OpenBB", openbb_scraper, since))
+                wl = self.config.sources.openbb.watchlists
+                matching_wl = [w for w in wl if w.enabled and self._category_matches(w.category, categories)]
+                if matching_wl:
+                    obb_cfg = self.config.sources.openbb.model_copy(deep=True)
+                    obb_cfg.watchlists = matching_wl
+                    openbb_scraper = OpenBBScraper(obb_cfg, client)
+                    tasks.append(self._fetch_with_progress("OpenBB", openbb_scraper, since))
 
-            # OSS Insight trending repos
-            if self.config.sources.ossinsight and self.config.sources.ossinsight.enabled:
+            # OSS Insight — skip entirely when category filter is active (no category field)
+            if self.config.sources.ossinsight and self.config.sources.ossinsight.enabled and not categories:
                 oss_scraper = OSSInsightScraper(self.config.sources.ossinsight, client)
                 tasks.append(self._fetch_with_progress("OSS Insight", oss_scraper, since))
 
             # GitHub Trending
             if self.config.sources.github_trending and self.config.sources.github_trending.enabled:
-                gt_scraper = GitHubTrendingScraper(self.config.sources.github_trending, client)
-                tasks.append(self._fetch_with_progress("GitHub Trending", gt_scraper, since))
+                gt_cfg = self.config.sources.github_trending
+                if self._category_matches(gt_cfg.category, categories):
+                    gt_scraper = GitHubTrendingScraper(gt_cfg, client)
+                    tasks.append(self._fetch_with_progress("GitHub Trending", gt_scraper, since))
 
             # Fetch all concurrently
             results = await asyncio.gather(*tasks, return_exceptions=True)
