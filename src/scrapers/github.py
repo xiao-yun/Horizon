@@ -275,9 +275,7 @@ class GitHubScraper(BaseScraper):
                     issue["updated_at"].replace("Z", "+00:00")
                 )
 
-                if updated_at < since:
-                    continue
-
+                # Proposals don't update daily — show all open ones regardless of recency
                 issue_labels = [l["name"] for l in issue.get("labels", [])]
                 item = ContentItem(
                     id=self._generate_id("github", "issue", str(issue["id"])),
