@@ -53,3 +53,8 @@ jobs:
           git add -f docs/_posts/ data/summaries/
           git diff --cached --quiet || git commit -m "📝 Daily Summary: ${{ env.DATE }}"
           git push
+
+      - name: Trigger deploy
+        run: gh workflow run deploy-docs.yml
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
