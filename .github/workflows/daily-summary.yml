@@ -2,7 +2,7 @@ name: Daily Horizon Summary
 
 on:
   schedule:
-    - cron: '27 1 * * *'  # 每天 UTC 1:27 ≈ 北京时间 9:27（避开整点高峰）
+    - cron: '27 20 * * *'  # UTC 20:27 + fork 延迟 4-5h ≈ 北京时间 8:30-9:30
   workflow_dispatch:
     inputs:
       categories:
@@ -44,7 +44,7 @@ jobs:
           fi
 
       - name: Set current date
-        run: echo "DATE=$(date +'%Y-%m-%d')" >> $GITHUB_ENV
+        run: echo "DATE=$(TZ='Asia/Shanghai' date +'%Y-%m-%d')" >> $GITHUB_ENV
 
       - name: Commit and push generated docs
         run: |
