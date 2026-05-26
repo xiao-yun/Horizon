@@ -15,7 +15,6 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write
-      actions: write
 
     steps:
       - name: Checkout code
@@ -55,7 +54,11 @@ jobs:
           git diff --cached --quiet || git commit -m "📝 Daily Summary: ${{ env.DATE }}"
           git push
 
-      - name: Trigger deploy
-        run: gh workflow run deploy-docs.yml
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Deploy to GitHub Pages
+        uses: peaceiris/actions-gh-pages@v4
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: ./docs
+          keep_files: true
+          publish_branch: gh-pages
+          enable_jekyll: true
